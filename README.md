@@ -1,4 +1,4 @@
-# Enderwire-
+# Enderwire Manta E3 ez board
 printer.cfg
 [include mainsail.cfg]
 
