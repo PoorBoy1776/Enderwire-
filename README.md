@@ -294,3 +294,157 @@ fade_target: 0
 #speed: 50
 #z_hop: 15
 #z_hop_speed: 5
+#####################################################################
+# 	Displays
+#####################################################################
+## 	For the mini12864 Display, the [display] and [neopixel] must be uncommented
+# mini12864 LCD Display
+# connected to exp1/2
+# 
+# [display]
+# lcd_type: st7920
+# cs_pin: EXP1_7
+# sclk_pin: EXP1_6
+# sid_pin: EXP1_8
+# encoder_pins: ^EXP1_5, ^EXP1_3
+# click_pin: ^!EXP1_2
+
+# [display]
+# #    mini12864 LCD Display
+# lcd_type: uc1701
+# cs_pin: EXP1_7
+# a0_pin: PB8
+# rst_pin: PB15
+# encoder_pins: ^EXP1_5, ^EXP1_3
+# click_pin: ^!EXP1_2
+# contrast: 63
+
+# spi_software_sclk_pin: PC10
+# spi_software_mosi_pin: PC12
+# spi_software_miso_pin: PC11
+
+# [neopixel btt_mini12864]
+# # # ##  To control Neopixel RGB in mini12864 display
+# pin: EXP1_1
+# chain_count: 3
+# initial_RED: 0.1
+# initial_GREEN: 0.5
+# initial_BLUE: 0.0
+# color_order: RGB
+
+# # ##  Set RGB values on boot up for each Neopixel. 
+# # ##  Index 1 = display, Index 2 and 3 = Knob
+# [delayed_gcode setdisplayneopixel]
+# initial_duration: 1
+# gcode:
+#          SET_LED LED=btt_mini12864 RED=0 GREEN=1 BLUE=0 INDEX=1 TRANSMIT=0
+#          SET_LED LED=btt_mini12864 RED=0 GREEN=1 BLUE=0 INDEX=2 TRANSMIT=0
+#          SET_LED LED=btt_mini12864 RED=0 GREEN=1 BLUE=0 INDEX=3
+
+#####################################################################
+#   Case Lights
+#####################################################################
+#[output_pin LIGHTS]
+#pin: PA8
+#value: 0
+#shutdown_value: 0
+
+#[gcode_macro lights_on]
+#gcode:
+    #SET_PIN PIN=LIGHTS VALUE=1.0
+
+#[gcode_macro lights_off]
+#gcode:
+    #SET_PIN PIN=LIGHTS VALUE=0.0
+
+#####################################################################
+#  input shaper  definition
+#####################################################################
+[input_shaper]
+shaper_freq_x: 41.7  # frequency for the X mark of the test model
+shaper_freq_y: 58.0  # frequency for the Y mark of the test model
+shaper_type_x: mzv
+shaper_type_y: mzv
+
+
+#####################################################################
+# 	Macros
+#####################################################################
+
+[gcode_macro PRINT_START]
+#   Use PRINT_START for the slicer starting script - PLEASE CUSTOMISE THE SCRIPT
+gcode:
+    {% set bedtemp = params.BED|int %}
+    {% set extrudertemp = params.EXTRUDER|int %}
+    {% set chambertemp = params.CHAMBER|default(0)|int %}
+
+    SETUP_KAMP_MESHING DISPLAY_PARAMETERS=1 LED_ENABLE=1 FUZZ_ENABLE=1
+    SETUP_LINE_PURGE DISPLAY_PARAMETERS=1 ADAPTIVE_ENABLE=1
+     
+    M117 Homing...                 ; display message
+    M104 S150
+    M190 S{bedtemp}
+    BED_MESH_CLEAR
+    G28 Y0 X0 Z0
+    BED_MESH_CALIBRATE
+    
+    ##Purge Line Gcode
+    #G92 E0;
+    #G90
+    #G0 X5 Y5 F6000
+    #G0 Z0.4
+    #G91
+    #G1 X120 E30 F1200;
+    #G1 Y1
+    #G1 X-120 E30 F1200;
+    #G92 E0;
+    #G90
+    
+    G1 Z15.0 F600 ;move the platform down 15mm
+    G1 X110 Y110 F3000
+    M109 S{extrudertemp} 
+    LINE_PURGE
+    M117 Printing...
+
+
+[gcode_macro PRINT_END]
+#   Use PRINT_END for the slicer ending script
+gcode:
+    #   Get Boundaries
+    {% set max_x = printer.configfile.config["stepper_x"]["position_max"]|float %}
+    {% set max_y = printer.configfile.config["stepper_y"]["position_max"]|float %}
+    {% set max_z = printer.configfile.config["stepper_z"]["position_max"]|float %}
+    
+    #   Check end position to determine safe directions to move
+    {% if printer.toolhead.position.x < (max_x - 20) %}
+        {% set x_safe = 20.0 %}
+    {% else %}
+        {% set x_safe = -20.0 %}
+    {% endif %}
+
+    {% if printer.toolhead.position.y < (max_y - 20) %}
+        {% set y_safe = 20.0 %}
+    {% else %}
+        {% set y_safe = -20.0 %}
+    {% endif %}
+
+    {% if printer.toolhead.position.z < (max_z - 2) %}
+        {% set z_safe = 2.0 %}
+    {% else %}
+        {% set z_safe = max_z - printer.toolhead.position.z %}
+    {% endif %}
+    
+    #  Commence PRINT_END
+    M400                             ; wait for buffer to clear
+    G92 E0                           ; zero the extruder
+    G1 E-4.0 F3600                   ; retract
+    G91                              ; relative positioning
+    G0 Z{z_safe} F3600               ; move nozzle up
+    G0 X{x_safe} Y{y_safe} F20000    ; move nozzle to remove stringing
+    
+    M104 S0                          ; turn off hotend
+    M140 S0                          ; turn off bed
+    M106 S0                          ; turn off fan
+    G90                              ; absolute positioning
+    G0 X{max_x / 2} Y{max_y} F3600   ; park nozzle at rear
+    M117 Finished...
